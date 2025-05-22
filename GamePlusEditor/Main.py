@@ -35,7 +35,7 @@ class UrsinaEditor(Entity):
         self.NonConfiableEditorData = OpenFile("Non configable editor data.txt",f"{CurrentFolderNameReturner()}/Editor data",self.NonConfiableEditorDataDefault,True)
         self.InstructionList = InstructionList()
 
-        self.ConfiableEditorDataDefault = {"Show tooltip":True,"Auto save on exit": False,"Show memory counter": True,"Fullscreen": False,"Anti-aliasing sample": 4,"Render distance (near)": .10,"Render distance (far)": 10000.0,}
+        self.ConfiableEditorDataDefault = {"Show tooltip":True,"Auto save on exit": False,"Show memory counter": False,"Fullscreen": False,"Anti-aliasing sample": 4,"Render distance (near)": .10,"Render distance (far)": 10000.0,}
         self.ConfiableEditorDataDefaultType = ("bool","bool","bool","bool","int","float","float")
         self.ConfiableEditorData = OpenFile("Configable editor data.txt",f"{CurrentFolderNameReturner()}/Editor data",self.ConfiableEditorDataDefault,True)
         self.FolderName = os.path.dirname(os.path.abspath(__file__))
