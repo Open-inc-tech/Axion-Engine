@@ -1,39 +1,33 @@
-# GamePlus editor is a 3D gui editor for python.
-This editor gives you the freedom to make 3D python games!
+# Axion Engine
 
+**Axion Engine** is a customized and extended version of the original [GamePlus-Editor](https://github.com/IndividualCoder/GamePlus-Editor), tailored specifically for the needs of **Noxarion Studio**. This version of the engine is being actively used as the foundation for all future 3D game projects developed by our team.
 
-# How to install it?
-It is very easy to install this editor, just open cmd and type `pip install GamePlusEditor`
-now make a .py file and run it with the following code:
-    ```from GamePlusEditor import RunEditor;
-    RunEditor()```
-it is as simple as this :)
+## 🚀 About
 
-# Features
-![StartingUi](Docs/StartingUi.png)
--  With a simmple Ui
+Axion Engine is a beginner-friendly, open-source 3D game engine built in Python. It combines the power of the [Ursina Engine](https://www.ursinaengine.org/) with a visual editor, allowing you to create 3D games with minimal coding.
 
-![ConfigMenu](Docs/ConfigMenu.png)
--  Configure the editor as you want!
+> **Note:** This engine is specially modified to suit the internal workflows and tools of Noxarion Studio. While it inherits much from GamePlus-Editor, it introduces a number of improvements, simplifications, and enhancements.
 
-![NewProject](Docs/NewProject.png)
--  Make new projects!
+---
 
-![SceneEditor](Docs/SceneEditor.png)
--  With a simple scene editor
+## 🧰 Features
 
-![CodeEditor](Docs/CodeEditor.png)
--  A simple code editor
+- 🎮 Visual 3D game editor
+- 🖼️ Texture & material assignment
+- ⚙️ Simple Python scripting integration
+- 🧠 Designed for fast prototyping and learning
+- 🔧 Lightweight and fully open-source
 
-![Playing](Docs/Playing.png)
--  Play your project without leaving the editor
+---
 
-![ExportToPy](Docs/ExportToPy.png)
--  Export your project to py
+## 🏗️ Current Status
 
-This editor will currently write your games in python. But I'll add the feture to turn your .py into .exe ^_~
-Backend supported by Ursina engine and panda3d 
+Axion Engine is under active development and being used in-house by Noxarion Studio for prototyping and developing 3D games.
 
-# Contribute
-Contributions to this project are welcome. If you have ideas for improving the editor, additional features, or bug fixes, please submit pull requests or open issues to discuss potential changes.
-Note: If you want to directly contribute to the code of the project, you first need to have a working example of what you've added and why you want to be a contributor
+---
+
+## 🔧 Requirements
+
+- Python 3.8 or later
+- pip
+- Windows/Linux (macOS untested)
