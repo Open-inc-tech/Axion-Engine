@@ -1,404 +1,339 @@
 from GamePlusEditor.ursina import *
-from GamePlusEditor.DirectionBox import PointOfViewSelector as DirectionEntity
-from GamePlusEditor.OtherStuff import TextToVar,MultiFunctionCaller
+from GamePlusEditor.ursina import invoke
 from GamePlusEditor.ursina.color import tint
-from GamePlusEditor.ColorMenu import ColorMenu
-from GamePlusEditor.GizmoStuff.GizmoManager import GizmoManager
-import re
+from GamePlusEditor.OtherStuff import CustomWindow,MultiFunctionCaller,RecursivePerformer,CurrentFolderNameReturner
+from GamePlusEditor.SceneEditor import SceneEditor
+from GamePlusEditor.OpenFile import Openselector,OpenFile
+from GamePlusEditor.ursina import SimpleButtonList
+# import site
+# from panda3d.core import SamplerState
 
-class SceneEditor(Entity):
-    def __init__(self,enabled,SaveFunction,AddTerminalFunc,EditorCamera,EditorDataDict,ShowInstructionFunc,ParentProjectEditor,cam2 = camera,CurrentProjectName = "",**kwargs):
+class ProjectEditor(Entity):
+    def __init__(self,ExportToPyFunc,CurrentTabs,EditorCamera,PlayFunction,EditorDataDict,ShowInstructionFunc,ReadyToHostProjectFunc,HostProjectFunc,ProjectSettings = {"ProjectGraphicsQuality": "Low","ProjectLanguage": "Python","ProjectNetworkingOnline": False,"CurrentTargatedPlatform": "windows","CurrentProjectBase": "FPC"},ToAddTabsText = [],ToAddTabsFunc = [],cam = camera,enabled = True,**kwargs):
         super().__init__(kwargs)
+        self.UDVars = [] #User defined vars (like bye = 2 or helo = 3)
+        self.UDFunc = [] #User defined func (any function)
+        self.UDSrc = [] #User defined script or run after initializing  the item (like item.add_script(whatever the script is))
+        self.UDWindowConfig = [] #User defined configuration to apply to the window 
+        self.ToImport = {"from ursina import *","from panda3d.core import AntialiasAttrib"} # modules to import before the game starts (stored in a set)
+        self._ProjectName = ""
+        self.ProjectSettings = ProjectSettings
+        self.CurrentEditor = None
+        self.CurrentSceneEditor:SceneEditor = None
+        self.ShowInstructionFunc = ShowInstructionFunc
+        self.EditorDataDict = EditorDataDict
 
-        self.WorldItems = []
-        self.Save = SaveFunction
-        self.AddTerminal = AddTerminalFunc
-        self.CurrentProjectName = CurrentProjectName
+        self.ReadyToHostProjectFunc = ReadyToHostProjectFunc
+        self.HostProjectFunc = HostProjectFunc
+        self.ExportToPyFunc = ExportToPyFunc
+        self.CurrentTabs = CurrentTabs
         self.EditorCamera = EditorCamera
         self.IsEditing = True
-        self.IsFieldActive = False
-        self.EditorDataDict = EditorDataDict
-        self.ShowInstructionFunc = ShowInstructionFunc
-        self.ToEditEntity = None
-        self.ParentProjectEditor = ParentProjectEditor
-        self.CurrentGizmo:str = "PositionGizmo"
-
-        self.GizmoManager:GizmoManager = GizmoManager()
-
-        self.AddObjectTextList = ["Add static object","Add dynamic object","Add FPC","Add TPC","Add abstraction"]
-        self.AddObjectOnClickFuncList = [self.AddEntityInScene,self.AddEntityInScene,self.AddEntityInScene,self.AddEntityInScene,self.AddEntityInScene]
-        self.BasicFunctions = ["Name: ","Parent: ","Position x: ","Position y: ","Position z: ","Rotation x: ","Rotation y: ","Rotation z: ","Scale x: ","Scale y: ","Scale z: ","Color: ","Model: ","Texture: ","Texture scale: "]
-        self.SpecialFunctions:dict = {"Color: ": lambda Obj,Parent,i: ColorMenu(Obj,(2.5,15),BGPos=(1,1,0),scale = (.5,.05),parent = Parent,y = -i*0.08+.34,z = -20,x = .13,radius = 1).SetUp()}
-
-        self.SpecialExtractingMethods: dict  = {"Parent: ": (lambda Field: setattr(Field.Obj,"parent",scene),lambda Filed: ..., lambda Field: (getattr(Field.Obj.parent,"name")),"1234567890qwertyuiopasdfghklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_",True),
-                                                "Name: ": (lambda Field: setattr(Field.Obj,'name',Field.text),lambda Field: ..., lambda Field: (getattr(Field.Obj,"name")),"1234567890qwertyuiopasdfghklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_",True),
-                                                "Model: ": (lambda Field: setattr(Field.Obj,'model',Field.text),lambda Field: ..., lambda Field: (getattr(Field.Obj.model,"name")),"1234567890qwertyuiopasdfghklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_./({[]})",True),
-                                                "Texture: ": (lambda Field: setattr(Field.Obj,'texture',Field.text),lambda Field: ..., lambda Field: getattr(Field.Obj,"texture"),"1234567890qwertyuiopasdfghklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_./({[]})",True),
-                                                "Texture scale: ": (lambda Field: setattr(Field.Obj,'texture_scale',eval(Field.text)),lambda Field: setattr(Field,'text',str(Field.Obj.texture_scale)), lambda Field: getattr(Field.Obj,"texture_scale"), "1234567890()Vec.,",True),
-                                                "Position x: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"position",Vec3(eval(Filed.text),Filed.Obj.position_y,Filed.Obj.position_z)),self.GizmoManager.GoToEntity),lambda Field: setattr(Field,"text",str(Field.Obj.position_x)),lambda Filed: str(getattr(Filed.Obj, "position_x")),"1234567890.-",False),
-                                                "Position y: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"position",Vec3(Filed.Obj.position_x,eval(Filed.text),Filed.Obj.position_z)),self.GizmoManager.GoToEntity),lambda Filed: setattr(Filed,"text",str(Filed.Obj.position_y)),lambda Filed: str(getattr(Filed.Obj, "position_y")),"1234567890.-",False),
-                                                "Position z: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"position",Vec3(Filed.Obj.position_x,Filed.Obj.position_y,eval(Filed.text))),self.GizmoManager.GoToEntity),lambda Filed: setattr(Filed,"text",str(Filed.Obj.position_z)),lambda Filed: str(getattr(Filed.Obj, "position_z")),"1234567890.-",False),
-
-                                                "Rotation x: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"rotation",Vec3(eval(Filed.text),Filed.Obj.rotation_y,Filed.Obj.rotation_z))),lambda Field: setattr(Field,"text",str(Field.Obj.rotation_x)),lambda Filed: str(getattr(Filed.Obj.rotation, "x")),"1234567890.-",False),
-                                                "Rotation y: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"rotation",Vec3(Filed.Obj.rotation_x,eval(Filed.text),Filed.Obj.rotation_z))),lambda Filed: setattr(Filed,"text",str(Filed.Obj.rotation_y)),lambda Filed: str(getattr(Filed.Obj.rotation, "y")),"1234567890.-",False),
-                                                "Rotation z: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"rotation",Vec3(Filed.Obj.rotation_x,Filed.Obj.rotation_y,eval(Filed.text)))),lambda Filed: setattr(Filed,"text",str(Filed.Obj.rotation_z)),lambda Filed: str(getattr(Filed.Obj.rotation, "z")),"1234567890.-",False),
-
-                                                "Scale x: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"scale_x",eval(Filed.text))),lambda Field: setattr(Field,"text",str(Field.Obj.scale_x)),lambda Filed: str(getattr(Filed.Obj.scale, "x")),"1234567890.-",False),
-                                                "Scale y: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"scale_y",eval(Filed.text))),lambda Filed: setattr(Filed,"text",str(Filed.Obj.scale_y)),lambda Filed: str(getattr(Filed.Obj.scale, "y")),"1234567890.-",False),
-                                                "Scale z: ": (lambda Filed: MultiFunctionCaller(Func(setattr,Filed.Obj,"scale_z",eval(Filed.text))),lambda Filed: setattr(Filed,"text",str(Filed.Obj.scale.z)),lambda Filed: str(getattr(Filed.Obj.scale, "z")),"1234567890.-",False)}
-
-
-        self.UniversalParentEntity = Entity(parent = cam2.ui,enabled = enabled)
-        self.SideBarTopParentEntity = Entity(parent = self.UniversalParentEntity,model = "cube",enabled = enabled,position = Vec3(-0.68, 0.16, 10),scale = Vec3(0.43, 0.56, 2),color = color.gray)
-        self.AddObjectMenuParentEntity = Entity(parent = self.UniversalParentEntity,model = None,enabled = enabled,position = Vec3(0.38, -0.35, 2),scale = Vec3(1.69, 0.1, 1),color = color.dark_gray,origin_y = 1)
-        self.SideBarBottomParentEntity = Entity(parent = self.UniversalParentEntity,model = "cube",enabled = enabled,position = Vec3(-0.68, -0.31, -30),scale = Vec3(0.43, 0.38, 2),color = color.tint(color.gray,-.1),collider = "mesh")
-        self.SideBarTopSlideHandler = Button(name = "hehe",parent = self.SideBarTopParentEntity,model = "cube",radius=0,visible_self = False,z = -200)
-
-        self.ScrollUpdater = self.SideBarTopSlideHandler.add_script(Scrollable(min=0,max = .3,scroll_speed = .01))
-
-
-        self.WorldGrid = [Entity(parent=self, model=Grid(200,200,thickness = 2), rotation_x=90, scale=Vec3(200, 200, 200), collider=None, color=color.red),Entity(parent=self, model=Grid(100,100,thickness = 3), rotation_x=90, scale=Vec3(200, 200, 200), collider=None, color=color.black33),Entity(parent=self, model=Grid(400,400), rotation_x=90, scale=Vec3(40, 40, 40), collider=None, color=color.green)]
-        self.DirectionEntity = DirectionEntity(cam2.ui,window.top_right- Vec2(.1,.038),self.EditorCamera,camera,enabled = enabled,z = -30,always_on_top = True,render_queue = 1)
-
-        self.SpecialEntities = [self.DirectionEntity,self.WorldGrid[0],self.WorldGrid[1]]
-
-        # self.ConstantOneStencil = StencilAttrib.make(1, StencilAttrib.SCFAlways, StencilAttrib.SOZero, StencilAttrib.SOReplace, StencilAttrib.SOReplace, 1, 0, 1)
-        # self.StencilReader = StencilAttrib.make(1, StencilAttrib.SCFEqual, StencilAttrib.SOKeep, StencilAttrib.SOKeep, StencilAttrib.SOKeep, 1, 1, 0)
-
-        # self.cm = CardMaker("cardmaker")
-        # self.cm.setFrame(-1,-.465,-.12,.5)
+        self.enabled = enabled
+        self.ToAddTabsText = ToAddTabsText
+        self.ToAddTabsFunc = ToAddTabsFunc
 
 
 
-        # self.viewingSquare = render.attachNewNode(self.cm.generate())
-        # self.viewingSquare.reparentTo(camera.ui)
-        # self.viewingSquare.setPos(Vec3(0,0,5))
+        self.UniversalParentEntity = Entity(parent = cam.ui,enabled = self.enabled)
 
-        # self.viewingSquare.node().setAttrib(self.ConstantOneStencil)
-        # self.viewingSquare.node().setAttrib(ColorWriteAttrib.make(0))
+        self.TopButtonsParentEntity = Entity(parent = self.UniversalParentEntity,enabled = self.enabled,model = "cube",color = tint(color.white,-.6),texture ="white_cube",position  = (window.top[0],window.top[1] - .03,0) ,scale =(window.screen_resolution[0] / 1052,window.screen_resolution[1]/18000,2),always_on_top = True)
+        self.TabsMenuParentEntity = Button(parent  = self.UniversalParentEntity,enabled = self.enabled,color = tint(color.rgb(31,31,31),.1),highlight_color = tint(color.rgb(31,31,31),.1),pressed_color =tint(color.rgb(31,31,31),.1),position  = Vec3(0, 0.5, -20) ,scale = Vec3(1.78, 0.1, 1),always_on_top = True,render_queue = -3,Key = "tab",on_key_press=self.ShowTabMenu,radius=0) # Vec3(0, 0.39, 1) animate
 
-        # self.viewingSquare.setBin('background', 0)
-        # self.viewingSquare.setDepthWrite(0)
+        self.EditingProjectText = Text(parent = self.TopButtonsParentEntity,render_queue = self.TopButtonsParentEntity.render_queue,text="",origin = (0,0),scale_y = 20,scale_x = 1)
 
-        # self.SideBarTopSlideHandler.node().setAttrib(self.StencilReader)
+        self.TabsForegroundParentEntity = Button(parent = self.TabsMenuParentEntity,radius=0,color = color.rgb(31,31,31),position = Vec3(-0.136, 0, -22),rotation = Vec3(0, 0, 0),scale = Vec3(0.727004, 1, 1),always_on_top = True,render_queue = -1)
 
+        self.ProjectTabsScrollEntity = Button(parent = self.TabsMenuParentEntity,radius=0,color = self.TabsMenuParentEntity.color,highlight_color = self.TabsMenuParentEntity.highlight_color,pressed_color = self.TabsMenuParentEntity.pressed_color,origin = (-.5,0,0),position = Vec3(0.2277, 0, -21),rotation = Vec3(0, 0, 0),scale = Vec3(.271, 1, 1),always_on_top = True,render_queue = -2)
 
-    def GetState(self):
-        '''Gives the 'state' of the scene.\nLike which gizmo is enabled (positon gizmo or rotation gizmo or the scale one) on which entity and the position and rotation of the camera'''        
-        return {"GizmoState": {"Type": self.CurrentGizmo,"Snapping": self.GizmoManager.CurrentGizmo.Snapping,"Entity": self.GizmoManager.CurrentGizmoEntity}, "CamState": {"Position": self.EditorCamera.position,"Rotation": self.EditorCamera.rotation}}
+        self.SnappingChangingButton = Button(parent = self.TabsForegroundParentEntity,SnappingType = None,render_queue = self.TabsForegroundParentEntity.render_queue)
+        self.SnappingIncreaseButton = Button(parent = self.SnappingChangingButton,text="Increase",position = (-1,0.25,0),scale_y = .5,on_click = Func(self.IncreaseOrDecreaseSnapping,0.5),render_queue = self.SnappingChangingButton.render_queue)
+        self.SnappingDecreaseButton = Button(parent = self.SnappingChangingButton,text="Decrease",position = (-1,-0.25,0),scale_y = .5 ,on_click = Func(self.IncreaseOrDecreaseSnapping,-0.5),render_queue = self.SnappingChangingButton.render_queue)
 
-    def SetState(self,State):
-        '''Sets the state of the scene and gizmos according to the given dict'''
-        self.CurrentGizmo = State["GizmoState"]["Type"]
-
-        if State["GizmoState"]["Entity"] is not None:
-            for entity in self.WorldItems:        
-                name = re.search(r"name='([^']*)'", State["GizmoState"]["Entity"]['args']).group(1)
-                if str(entity) == str(name):
-                    self.ToEditEntity = entity
-                    self.AddGizmoTo(entity)
-                    self.GizmoManager.CurrentGizmo.Snapping = State["GizmoState"]["Snapping"]
-                    self.ParentProjectEditor.OnGizmoUpdated()
-
-        self.EditorCamera.position = State["CamState"]["Position"]
-        self.EditorCamera.rotation = State["CamState"]["Rotation"]
+        # self.ApplicationAssetFolderTemp = application.asset_folder
+        # application.asset_folder = Path(f"{site.getsitepackages()[1]}/GamePlusEditor")
+        # # self.SnappingChangingButton.icon.texture._texture.setMinfilter(SamplerState.FT_linear_mipmap_linear)
+        # # self.SnappingChangingButton.icon.texture._texture.minfilter =SamplerState.FT_nearest
+        # # self.SnappingChangingButton.icon.texture._texture.setMinfilter(SamplerState.FT_nearest)
+        # # self.SnappingChangingButton.icon.texture._texture.setAnisotropicDegree(8)
+        # application.asste_folder = self.ApplicationAssetFolderTemp
 
 
-    def UpdateScroller(self):
-        if len(self.AddObjectMenuParentEntity.children) == 5:
-            self.AddedScriptAddObjectMenu.update_target("min",self.AddedScriptAddObjectMenu.min - 0.17)
-            return
-        self.AddedScriptAddObjectMenu.update_target("min",self.AddedScriptAddObjectMenu.min - 0.3042)
+        self.AddEditorToPrjectButton = Button(parent = self.TabsForegroundParentEntity,text = "+",on_click = self.ShowToAddTabsMenu,render_queue = self.TabsForegroundParentEntity.render_queue,always_on_top = True,radius=.1)
+        self.ButtonDict = {}
+        self.AddEditorToPrjectButtonList = SimpleButtonList(self.ButtonDict,scale_x = 20,scale_y = 40,parent  = self.AddEditorToPrjectButton,color = color.red,render_queue = 2,always_on_top = True,enabled = False)
 
-    def GetPosTemp(self):
-        self.AddedScriptAddObjectMenu = self.AddObjectMenuParentEntity.add_script(Scrollable(min=.38,max=.38,scroll_speed = .03,axis = "x"))
-        for i in range(len(self.AddObjectTextList)):
-            self.AddObjectToScroll(Button(parent = self.AddObjectMenuParentEntity,text=self.AddObjectTextList[i],scale = Vec3(0.1800007, 1, 1),radius=0,color=color.blue,texture = "white_cube",position = Vec3(-0.41+i*.18, -1.02, 0),on_click = self.AddObjectOnClickFuncList[i]))
- 
-    def AddObjectToScroll(self,object): 
-        self.AddObjectMenuParentEntity.children.append(object)
-        if len(self.AddObjectMenuParentEntity.children) > 4:
-            self.UpdateScroller()
-
-    def AddEntityInScene(self):
-        self.WorldItems.append(Entity(name = f"item_{len(self.WorldItems)}",parent = scene,model = "cube",texture = "white_cube",collider = "mesh",collision = True,color = color.white))
-        self.ShowObjectContent(self.WorldItems[-1],self.SideBarTopSlideHandler)
-        self.ScrollUpdater.update_target("max",34)
-        self.ToEditEntity = self.WorldItems[-1]
-        self.AddGizmoTo(self.WorldItems[-1])
+        self.AddEditorToPrjectButtonList.Background.z = 100
+        self.AddEditorToPrjectButtonList.Background.on_click = Func(MultiFunctionCaller,self.AddEditorToPrjectButtonList.disable,self.AddEditorToPrjectButtonList.Background.disable)
+        self.AddEditorToPrjectButtonList.Background.Key = "escape"
+        self.AddEditorToPrjectButtonList.Background.render_queue = 1
 
 
-    def ShowObjectContent(self,Obj,Parent: Entity):
-        self.TempLen = len(Parent.children)
-        for i in range(self.TempLen-1,-1,-1):
-            destroy(Parent.children[i])
-        del self.TempLen
-        Parent.children = []
+        for i in range(len(self.ToAddTabsText)):
+            self.ButtonDict[self.ToAddTabsText[i]] = Func(MultiFunctionCaller,self.ToAddTabsFunc[i],self.AddEditorToPrjectButtonList.disable,self.AddEditorToPrjectButtonList.Background.disable)
+
+        self.AddEditorToPrjectButtonList.button_dict = self.ButtonDict
 
 
-        Text(parent = Parent,text =type(Obj).__name__,scale = 3,origin = (0,0),y = .45,z = 20,scale_x = 3.5)
-        Entity(name = "Line",parent = Parent,model = "line",color = color.black,scale = Vec3(0.99, 1.02, 1),position  = Vec3(0.01, 0.39, 20))
+        self.SaveProjectButton = Button(parent = self.TopButtonsParentEntity,text="Save",color = color.blue,radius  = 0,position =(-0.447, 0, -25),scale = (0.06,0.7),on_click = self.SaveAllEditors,Key = "s",partKey="control") #Vec3(0.179, 0.0385, 1)
+        self.FinishProjectButton = Button(parent = self.TopButtonsParentEntity,text="Finish",color = color.blue,radius  = 0,position =(-0.377, 0, -25),scale = (0.06,0.7),on_click = self.FinishProject) #Vec3(0.179, 0.0385, 1)
+        self.PlayProjectButton = Button(parent = self.TopButtonsParentEntity,text="Play",color = color.blue,radius  = 0,position =(-0.307, 0, -25),scale = (0.06,0.7),on_click = PlayFunction) #Vec3(0.179, 0.0385, 1)
+        self.HostProjectButton = Button(parent = self.TopButtonsParentEntity,text="Host",color = color.blue,radius  = 0,position =(-0.237, 0, -25),scale = (0.06,0.7))# on_click = self.AskToHostProject
+        self.HomeButton = Button(parent = self.TopButtonsParentEntity,text="Home",color = color.blue,radius  = 0,position =(-0.167, 0, -25),scale = (0.06,0.7)) #Vec3(0.179, 0.0385, 1)
 
-        for i in range(len(self.BasicFunctions)):
-            Text(parent = Parent,text = f"{self.BasicFunctions[i]}",scale = 2,y = -i*0.08+.36,z = 20,x = -.47)
+    def IncreaseOrDecreaseSnapping(self,Val: float):
+        FinalVal = getattr(self.CurrentSceneEditor.GizmoManager,self.SnappingChangingButton.SnappingType.replace("Gizmo","Snapping")) + Val
+        if FinalVal >= 0:
+            setattr(self.CurrentSceneEditor.GizmoManager,self.SnappingChangingButton.SnappingType.replace("Gizmo","Snapping"),FinalVal)
+            self.OnGizmoUpdated()
 
-        for i in range(len(self.BasicFunctions)):
-            if self.BasicFunctions[i]  in self.SpecialFunctions.keys():
-                self.SpecialFunctions[self.BasicFunctions[i]](Obj,Parent,i)
-            else:
-                def UpdateFieldContent(field):
-                    if field.active:
-                        return
+    def updateVal(self):
+        if len(self.ProjectTabsScrollEntity.children) == 4:
+            self.val = self.val - .13
+        else:
+            self.val = self.val - .096
 
-                    if type(getattr(field.Obj,field.name)) in (int,float) and not self.IsFieldActive:
-                        # if getattr(Obj,field.name) == field.text:
-                        field.text = f"{round(getattr(field.Obj,field.name),11)}"
+    def FinishProject(self):
+        invoke(self.ShowCustomWindow,ToEnable = self.CancelFinishingProject,Title = "Export to py",OnEnable = self.ShowFinishProjectMenu,
+               CalcAndAddTextLines = False,ToAddHeight = 3,
+               Content = [Text("Note: You can later export the project to cpp.\nWhen it is implemented ;)\n\nNote: There will be a folder named 'Exported games'\n           in your selected dir and your game will be saved in \n           that folder in a .py format."),
+                          Button(color = color.rgba(255,255,255,125),text  = "Open file selector",highlight_color = color.blue,on_click = Sequence(Func(self.ExportToPy),Func(self.DestroyCurrentWindow))),
+                          Button(color = color.rgba(255,255,255,125),text  = "Cancel",highlight_color = color.blue,click_to_destroy = True)],
+                          delay = .1)
 
-                TempChild = InputField(submit_on=["enter","escape"],parent = Parent,y = -i*0.08+.34,z = -20,x = .13,active = False,text_scale = .75,cursor_y = .1,enter_active = True,character_limit=13,Obj = Obj)
 
-                if self.BasicFunctions[i] in self.SpecialExtractingMethods.keys():
-                    TempChild.SetNewValue = self.SpecialExtractingMethods[self.BasicFunctions[i]][0]
-                    TempChild.DumpValue = self.SpecialExtractingMethods[self.BasicFunctions[i]][2]
-                    TempChild.limit_content_to = self.SpecialExtractingMethods[self.BasicFunctions[i]][3]
-                    TempChild.text = f"{TempChild.DumpValue(TempChild)}"
-                    TempChild.on_submit = Func(TempChild.SetNewValue,TempChild)
-                    if self.SpecialExtractingMethods[self.BasicFunctions[i]][4]:
+    def ShowFinishProjectMenu(self):
+        self.EditorCamera.disable()
+        for i in range(len(self.CurrentTabs)):
+            if isinstance(self.CurrentTabs,SceneEditor):
+                self.CurrentTabs[i].IsEditing = False
 
-                        TempChild.ToUpdateOnEnter = Func(MultiFunctionCaller,Func(self.SpecialExtractingMethods[self.BasicFunctions[i]][1],TempChild),Func(self.UpdateItemContent,Obj,Parent))
- 
-                    else:
-                        TempChild.UpdateContent = self.SpecialExtractingMethods[self.BasicFunctions[i]][1]
+    def ExportToPy(self):
+        self.ExportToPyFunc(Openselector())
+
+    def CancelFinishingProject(self):
+        self.EditorCamera.enable()
+        for i in range(len(self.CurrentTabs)):
+            if isinstance(self.CurrentTabs,SceneEditor):
+                self.CurrentTabs[i].IsEditing = True
+
+    def EnableEditor(self,EditorsOldestAncestor):
+        EditorsOldestAncestor.enable()
+        for i in range(len(EditorsOldestAncestor.children)):
+            EditorsOldestAncestor.children[i].enable()
+            if len(EditorsOldestAncestor.children[i].children) > 0:
+                self.EnableEditor(EditorsOldestAncestor.children[i])
+
+    def ShowCustomWindow(self,ToEnable,OnEnable,Title = "Info",CalcAndAddTextLines  = True,ToAddHeight = 0,Content = None):
+        self.CurrentCustomWindow = CustomWindow(ToEnable=ToEnable,title = Title,OnEnable=OnEnable,
+                CalcAndAddTextLines = CalcAndAddTextLines,ToAddHeight = ToAddHeight,content = Content,Queue = 4)
+
+        self.CurrentCustomWindow.WindowPanelOfQuit.text_entity.render_queue = 5
+
+
+    def ShowTabMenu(self):
+        # print(len(self.CurrentTabs))
+        if self.IsEditing:
+            if not held_keys["control"] and not held_keys["shift"] and not held_keys["alt"]:
+                if round(self.TabsMenuParentEntity.y,2) == 0.39:
+                    self.TabsMenuParentEntity.animate_position(Vec3(0, 0.5, 0),.5)
+                    if self.AddEditorToPrjectButtonList.enabled:
+                        self.AddEditorToPrjectButtonList.disable()
+                        self.AddEditorToPrjectButtonList.Background.disable()
 
                 else:
-                    def TryExtractData(Field):
-                        return float(Field.text)
+                    self.TabsMenuParentEntity.animate_position(Vec3(0, 0.39, 0),.5)
 
-                    TempChild.text = f"{getattr(Obj,TextToVar(self.BasicFunctions[i],'_'))}"
-                    TempChild.ExtractData = TryExtractData
-                    TempChild.name = TextToVar(self.BasicFunctions[i],'_')
+    def SaveAllEditors(self):
+        for i in self.CurrentTabs:
+            i.SaveEditor()
+        self.ShowInstructionFunc("Your project is saved :)",Color = tint(color.white,-.6),Title = "Saved!")
 
-                    def ReturnName(field):
-                        return setattr(field.Obj,f"{field.name}",eval(field.text))
-                    TempChild.SetNewValue = ReturnName
-
-                    TempChild.UpdateContent = UpdateFieldContent
-                    TempChild.on_submit = Func(self.UpdateItemContent,Obj,Parent)
-
-
-
-    def UpdateItemContent(self,Obj,Parent):
-        for i in range((len(Parent.children))):
-            try:
-                if hasattr(Parent.children[i],"SetNewValue"):
-                    Parent.children[i].SetNewValue(Parent.children[i])
-
-            except Exception as e:
-                self.ShowInstructionFunc(Title = "Error",Str = f"you got {type(e).__name__} error: {e}")
-
-    def AddGizmoTo(self,Entity):
-        self.ShowObjectContent(Entity,self.SideBarTopSlideHandler)
-        self.ToEditEntity = Entity
-        self.GizmoManager.OnDrag = self.SideBarTopParentEntity.UpdateField
-        self.GizmoManager.AddGizmo(self.ToEditEntity,self.CurrentGizmo)
-        self.ParentProjectEditor.OnGizmoUpdated()
-
-
-
-    def inputUni(self,key):
-        if key == "left mouse up":
-            self.SideBarTopParentEntity.UpdateIsFieldActive()
-            if not self.IsEditing or self.IsFieldActive:
-                return
-            if mouse.hovered_entity in self.WorldItems:
-                self.AddGizmoTo(mouse.hovered_entity)
-
-
-        elif key == "enter":
-            self.SideBarTopParentEntity.UpdateFieldOnEnter()            
-
-        elif key == "`":
-            self.TerminalIndex = [i for i in self.UniversalParentEntity.children if i.name == "Terminal"]
-
-            if self.TerminalIndex == []:
-                self.AddTerminal()
-                self.TerminalIndex = [i for i in self.UniversalParentEntity.children if i.name == "Terminal"]
-
-            else:
-                self.TerminalIndex[0].Toogle()
-
-        elif key in ("p","r",'s'):
-            if held_keys["p"] and held_keys['shift']:
-                self.CurrentGizmo =  "PositionGizmo"
-                self.GizmoManager.OnDrag = self.SideBarTopParentEntity.UpdateField
-                self.GizmoManager.AddGizmo(self.ToEditEntity,self.CurrentGizmo)
-
-            elif held_keys["r"] and held_keys['shift']:
-                self.CurrentGizmo =  "RotationGizmo"
-                self.GizmoManager.OnDrag = self.SideBarTopParentEntity.UpdateField
-                self.GizmoManager.AddGizmo(self.ToEditEntity,self.CurrentGizmo)
-
-            elif held_keys["s"] and held_keys['shift']:
-                self.CurrentGizmo =  "ScaleGizmo"
-                self.GizmoManager.OnDrag = self.SideBarTopParentEntity.UpdateField
-                self.GizmoManager.AddGizmo(self.ToEditEntity,self.CurrentGizmo)
-            self.ParentProjectEditor.OnGizmoUpdated()
-
-
-        elif key == "delete up":
-            if self.IsFieldActive is not True:
-
-                try:
-
-                    index = self.WorldItems.index(self.ToEditEntity)
-                    destroy(self.ToEditEntity)
-                    del self.WorldItems[index]
-                    self.ToEditEntity = None
-                except ValueError:
-                    pass
-
-    def updateUni(self):
-        if not self.IsEditing:
+    def JumpTabs(self,ToJump):
+        if self.CurrentTabs[ToJump] == self.CurrentEditor and len(self.CurrentTabs) > 1:
             return
 
-        if 1 < distance(camera.position,(0,0,0)):
-            self.distance = distance(camera.position,(0,0,0))
-            if self.distance > 150:
-                self.distance = 150
-        else:
-            self.distance = 0
 
-        if self.distance > 10:
-            self.WorldGrid[0].color = color.rgba(70,70,70,1000 / self.distance)
-            if int(self.WorldGrid[0].color[3]) == 0 and self.distance < 50: self.WorldGrid[0].enable()
+        self.CurrentEditor.UniversalParentEntity.disable()
+        self.CurrentEditor.disable()
+        self.CurrentEditor.ignore = True
 
-            self.WorldGrid[1].color = color.rgba(50,50,50,self.distance)
-            if int(self.WorldGrid[1].color[3]) == 0: self.WorldGrid[1].enable()
+        if type(self.CurrentEditor).__name__ == "SceneEditor":
+            RecursivePerformer(self.CurrentEditor.SpecialEntities,"disable")
 
-            self.WorldGrid[2].color = color.rgba(0,0,0,200/self.distance)
-            if int(self.WorldGrid[2].color[3]) == 0 and self.distance < 50: self.WorldGrid[2].enable()
 
-        if self.distance < 10:
-            self.WorldGrid[1].color = color.rgba(50,50,50,0)
-            self.WorldGrid[1].disable()
+        self.CurrentEditor = self.CurrentTabs[ToJump]
+        self.CurrentEditor.enable()
+        self.CurrentEditor.ignore = False
+        RecursivePerformer(self.CurrentEditor.UniversalParentEntity)
+        # self.CurrentEditor.SetUp()
+        if hasattr(self.CurrentEditor,"MakeEditorEnvironment"):
+            if type(self.CurrentEditor).__name__ == "CodeEditorPython":
+                self.CurrentEditor.MakeEditorEnvironment(application.base.camNode,(255,255,255,0),(0.0019, 0.355, 0.4599 ,0.935))
 
-        if self.distance > 50:
-            self.WorldGrid[2].color = color.rgba(0,0,0,0)
-            self.WorldGrid[2].disable()
-            self.WorldGrid[0].color = (70,70,70,0)
-            self.WorldGrid[0].disable()
+            elif type(self.CurrentEditor).__name__ == "CodeEditorUrsaVisor":
+                self.CurrentEditor.MakeEditorEnvironment(application.base.camNode,(200,200,200,0),(0.0019, 0.355, 0.4599 ,0.935))
 
-            # print(self.distance)
+            elif type(self.CurrentEditor).__name__ == "SceneEditor":
+                self.CurrentEditor.MakeEditorEnvironment(application.base.camNode,(255,255,255,0),(0.2399, .999, 0.1009, 0.938))
+        if type(self.CurrentTabs[ToJump]).__name__ == "SceneEditor":
+            self.CurrentSceneEditor = self.CurrentTabs[ToJump]
+            RecursivePerformer(self.CurrentEditor.SpecialEntities)
 
-            # if self.distance != 0:
-            #     if int(self.WorldGrid[0].color[3]) * 255 == 0: self.WorldGrid[0].disable()
-            #     if int(self.WorldGrid[1].color[3]) * 255 == 0: self.WorldGrid[1].disable()
-            #     if int(self.WorldGrid[2].color[3]) * 255 == 0: self.WorldGrid[2].disable()
 
-    def MakeEditorEnvironment(self,cam,color,size):
+        def DisableInputFields(Entity):
+            if isinstance(Entity, (InputField,TextField)):
+                Entity.active = False
+            return
+        RecursivePerformer(self.CurrentEditor.UniversalParentEntity,ToPerform=DisableInputFields,BasicFunc=False)
 
-        self.WorldDr = cam.getDisplayRegion(0)
-        self.WorldDr.setDimensions(size)
-        base.set_background_color(color[0]/255,color[1]/255,color[2]/255,color[3]/255)
-        # print(size)
+        for i in range(len(self.ProjectTabsScrollEntity.children)):
+            if self.ProjectTabsScrollEntity.children[i].TabNum == ToJump:
+                self.ProjectTabsScrollEntity.children[i].color = tint(color.black,.3)
+                self.ProjectTabsScrollEntity.children[i].highlight_color = tint(tint(color.black,.3),.2)
+            else:
+                self.ProjectTabsScrollEntity.children[i].color = color.black66
 
-    def DisableEverything(self):
-        # self.UniversalParentEntity.disable()
-        self.EditorCamera.disable()
-        self.IsEditing = False
+        # for i in range(len(self.ProjectTabsScrollEntity.children)):
+        #     if self.CurrentTabs[self.ProjectTabsScrollEntity.children[i].TabNum] == self.CurrentEditor:
+        #         self.ProjectTabsScrollEntity.children[i].color = color.red
+        #         self.ProjectTabsScrollEntity.children[i].highlight_color = color.red
 
-    def EnableEverything(self,Entity):
-        self.EditorCamera.enable()
 
-        self.IsEditing = True
-    
-    def Setup(self):
-        self.UniversalParentEntity.input = self.inputUni
-        self.UniversalParentEntity.update = self.updateUni
-        self.DirectionEntity.front_text.render_queue = 1
-        self.DirectionEntity.back_text.render_queue = 1
-        self.DirectionEntity.left_text.render_queue = 1
-        self.DirectionEntity.right_text.render_queue = 1
-        self.DirectionEntity.top_text.render_queue = 1
-        self.DirectionEntity.bottom_text.render_queue = 1
+
+    def UpdateTabsMenu(self):
+        # for i in range(len())
+        self.ProjectTabsScrollEntity.children.append(Button(text=self.CurrentTabs[len(self.ProjectTabsScrollEntity.children)].name,TabNum = len(self.ProjectTabsScrollEntity.children),parent = self.ProjectTabsScrollEntity,scale = (.28,.4),position = (len(self.ProjectTabsScrollEntity.children)/3+.2,0,-22),radius=0,render_queue = self.ProjectTabsScrollEntity.render_queue))
+        self.ProjectTabsScrollEntity.children[-1].text_entity.render_queue = self.ProjectTabsScrollEntity.render_queue
+        self.ProjectTabsScrollEntity.children[-1].text_entity.wordwrap = 10
+        self.ProjectTabsScrollEntity.children[-1].text_entity.scale -= .2
+        self.ProjectTabsScrollEntity.children[-1].on_click = Func(self.JumpTabs,self.ProjectTabsScrollEntity.children[-1].TabNum)
+
+        for i in range(len(self.ProjectTabsScrollEntity.children)):
+            self.ProjectTabsScrollEntity.children[i].text_entity.render_queue = self.ProjectTabsScrollEntity.children[i].text_entity.render_queue
+
+        if len(self.ProjectTabsScrollEntity.children) > 3:
+            if len(self.ProjectTabsScrollEntity.children) == 4:
+                self.ProjectTabsScrollEntity.scale_x = self.ProjectTabsScrollEntity.scale_x+ .14
+            else:
+                self.ProjectTabsScrollEntity.scale_x = self.ProjectTabsScrollEntity.scale_x+ .09582
+
+            for i in range(len(self.ProjectTabsScrollEntity.children)):
+                self.ProjectTabsScrollEntity.children[0].x = .08 / self.ProjectTabsScrollEntity.scale_x
+                self.ProjectTabsScrollEntity.children[i].scale_x = .08 / self.ProjectTabsScrollEntity.scale_x
+                self.ProjectTabsScrollEntity.children[i].text = self.ProjectTabsScrollEntity.children[i].text 
+                self.ProjectTabsScrollEntity.children[i].text_entity.render_queue = self.ProjectTabsScrollEntity.children[i].text_entity.render_queue
+                self.ProjectTabsScrollEntity.children[i].text_entity.scale -= .1
+
+            for i in range(1,len(self.ProjectTabsScrollEntity.children)):
+                self.ProjectTabsScrollEntity.children[i].x = self.ProjectTabsScrollEntity.children[i-1].x + (self.ProjectTabsScrollEntity.children[i].scale_x) * 1.2
+                # print(self.ProjectTabsScrollEntity.children[i-1].x + (self.ProjectTabsScrollEntity.children[i].scale_x) * 1.2)
+            self.updateVal()
+            self.Scroller.update_target("min",self.val)
+
+    def PrintItemStatTemp(self,Entity):
+        for i in range(len(Entity.children)):
+            print(f"name: {Entity.children[i].name} position = {Entity.children[i].position},rotation = {Entity.children[i].rotation},scale = {Entity.children[i].scale}")
+            if len(Entity.children[i].children) > 0:
+                self.PrintItemStatTemp(Entity.children[i])
+
+    def ShowToAddTabsMenu(self):
+        self.AddEditorToPrjectButtonList.enable()
+        self.AddEditorToPrjectButtonList.Background.enable()
+
+    def AskToHostProject(self):
+        self._TempIp,self._TempPort = self.ReadyToHostProjectFunc()
+        self.ProjectHostMenu = HostProjectMenu(Queue=3,CancelClick=None,ToDoOnInit=None,Ip=self._TempIp,Port=self._TempPort,ToDoOnHost=self.HostProjectFunc)
+
+    def OnFileAdded(self):
+        for i in self.CurrentTabs:
+            if type(i).__name__ in ["CodeEditorPython"]:
+                i.FileMenu.ReCheckCodeFiles()
+
+    def DestroyCurrentWindow(self):
+        self.CurrentCustomWindow.PlayerNotQuitting()
+        # print("hi")
+        
+    def SetUp(self):
+        self.AddEditorToPrjectButton.position = Vec3(0.476, 0, -23)
+        self.AddEditorToPrjectButton.scale = Vec3(0.0299989, 0.369998, 1)
+        self.AddEditorToPrjectButton.text = self.AddEditorToPrjectButton.text
+        self.AddEditorToPrjectButton.text_entity.render_queue = self.AddEditorToPrjectButton.render_queue
+
+        self.SnappingChangingButton.position = Vec3(0.41, 0,  -25)
+        self.SnappingChangingButton.scale = Vec3(0.0599978,0.739996, 1)
+        self.SnappingChangingButton.text = self.AddEditorToPrjectButton.text
+        self.SnappingChangingButton.text_entity.render_queue = self.AddEditorToPrjectButton.render_queue
+
+        self.SnappingIncreaseButton.text_entity.scale = (0.4,1)
+        self.SnappingDecreaseButton.text_entity.scale = (0.4,1)
+
+        self.SnappingChangingButton.text_entity.render_queue = self.SnappingChangingButton.render_queue
+        self.SnappingIncreaseButton.text_entity.render_queue = self.SnappingChangingButton.render_queue
+        self.SnappingDecreaseButton.text_entity.render_queue = self.SnappingChangingButton.render_queue
 
         self.ConfigEditorAsSettings(self.EditorDataDict)
-        self.GizmoManager.parent = self
-        def UpdateIsFieldActive():
-            InputFieldChild = []
-            for child in self.SideBarTopSlideHandler.children:
-                if type(child) == InputField:
-                    InputFieldChild.append(child)
-            for child in InputFieldChild:
-                if child.active:
-                    self.IsFieldActive = True
-                    return
-                if child == self.SideBarTopSlideHandler.children[-1]:
-                    self.IsFieldActive = False
 
-        def UpdateField():
-            for child in self.SideBarTopSlideHandler.children:
-                if type(child) == InputField and hasattr(child,"UpdateContent"):
-                    child.UpdateContent(child)
+        self.val = .22
+        self.Scroller  = self.ProjectTabsScrollEntity.add_script(Scrollable(axis = "x",scroll_speed = 0.004,min = self.val,max = .2))
+        self.AddEditorToPrjectButtonList.text_entity.color = color.white
+        self.AddEditorToPrjectButtonList.text_entity.always_on_top = True
+        self.AddEditorToPrjectButtonList.text_entity.render_queue = 1
+        # for i in range(len(self.AddEditorToPrjectButtonList.button_dict)):
+        #     self.AddEditorToPrjectButtonList.button_dict[list(self.AddEditorToPrjectButtonList.button_dict)[i]]
 
-        def UpdateFieldOnEnter():
-            for child in self.SideBarTopSlideHandler.children:
-                if type(child) == InputField and hasattr(child,"ToUpdateOnEnter"):
-                    child.ToUpdateOnEnter()
 
-        self.SideBarTopParentEntity.UpdateIsFieldActive = UpdateIsFieldActive
-        self.SideBarTopParentEntity.UpdateField = UpdateField
-        self.SideBarTopParentEntity.UpdateFieldOnEnter = UpdateFieldOnEnter
+    def AfterSceneEditorSetUp(self):
+        # self.SnappingChangingButton.text = f"{self.CurrentSceneEditor.CurrentGizmo[0]}:{self.CurrentSceneEditor.GizmoManager.CurrentGizmo.Snapping}" if type(self.CurrentSceneEditor.GizmoManager.CurrentGizmo).__name__ != "NoneType" else  f"{self.CurrentSceneEditor.CurrentGizmo[0]}:N/A"
+        # self.SnappingChangingButton.SnappingType = self.CurrentSceneEditor.CurrentGizmo
+        self.OnGizmoUpdated()
 
-    def SaveEditor(self):
-        self.Save()
+    def OnGizmoUpdated(self):
+        self.SnappingChangingButton.text = f"{self.CurrentSceneEditor.CurrentGizmo[0]}:{self.CurrentSceneEditor.GizmoManager.CurrentGizmo.Snapping}" if type(self.CurrentSceneEditor.GizmoManager.CurrentGizmo).__name__ != "NoneType" else  f"{self.CurrentSceneEditor.CurrentGizmo[0]}:N/A"
+        self.SnappingChangingButton.SnappingType = self.CurrentSceneEditor.CurrentGizmo
+        self.SnappingChangingButton.text_entity.render_queue = self.AddEditorToPrjectButton.render_queue
+
 
     def ConfigEditorAsSettings(self,DataDict):
         self.SetTooltip(DataDict["Show tooltip"])
 
     def SetTooltip(self,value):
-        self.ItemToToolTipList = []
+        self.ItemToToolTipList = (self.AddEditorToPrjectButton,self.SnappingChangingButton)
         if value:
-            self.ToolTipList = []
+            self.ToolTipList = ('Add different editors as many as you want in the form of tabs',"Change snapping of the gizmo")
             for i in range(len(self.ItemToToolTipList)):
                 self.ItemToToolTipList[i].tool_tip = Tooltip(self.ToolTipList[i],z = -30,render_queue = 2,always_on_top = True)
-                # self.ItemToToolTipList[i].tool_tip.background.z = -1
+                self.ItemToToolTipList[i].tool_tip.background.render_queue = 1
+
 
         else:
             for i in range(len(self.ItemToToolTipList)):
                 self.ItemToToolTipList[i].tool_tip = None
 
+
+    @property
+    def ProjectName(self):
+        return self._ProjectName
+    
+    @ProjectName.setter
+    def ProjectName(self,Value):
+        self._ProjectName = Value
+        self.EditingProjectText.text = Value
+        self.UDSrc = OpenFile(f"{self._ProjectName}/User defined src.txt",f"{CurrentFolderNameReturner()}/Current Games",[])
+        return
+
 if __name__ == "__main__":
-    from GamePlusEditor.OtherStuff import *
-    # from ursina.camera import Camera
+    from GamePlusEditor.CodeEditorPython import CodeEditorPython
+    from GamePlusEditor.ursina import print_on_screen
     app = Ursina()
-    # window.fullscreen = True
-    # dr = application.base.camNode.getDisplayRegion(0)
-    from GamePlusEditor.ursina.prefabs.memory_counter import MemoryCounter
-    MemoryCounter()
-    # dr.setDimensions(0.2399, .999, 0.1009, 0.938)
-    # print(scene.entities)
-    window.fps_counter.disable()
-    window.exit_button.disable()
-    # cam2 = Camera()
-
-    editor = EditorCamera()
-    scene_editor = SceneEditor(editor_camera=editor,enabled=True,WorldItems=[],ToImport=set(),EditorCamera=editor,SaveFunction=Func(print,"hele"),ShowInstructionFunc=Func(print,"hele"),EditorDataDict={"Hell": 1})
-    scene_editor.UniversalParentEntity.enabled = True
-    scene_editor.GetPosTemp()
+    cam = EditorCamera()
     Sky()
-
-    # camera.ui_display_region.setDimensions(0./2399, .999, 0.1009, 0.938)
-    # ui_dr.setDimensions(0.2399, .999, 0.1009, 0.938)
-    # print(window.screen_resolution)
-    print(application.base.camNode.getDisplayRegion(0))
-    '''0.2399, .999, 0.1009, 0.938'''
-    scene_editor.MakeEditorEnvironment(application.base.camNode,(255,255,255,0),(0.2399, 1, 0.1009, 0.938))
-
-    def input(key):
-        if key == "l":
-            for i in range(len(camera.ui.children)):
-                camera.ui.children[i].enabled = not camera.ui.children[i].enabled
-        if key == "q":
-            application.quit()
+    editor = ProjectEditor(ExportToPyFunc=Func(print_on_screen,"<red>yeah <blue>yes"),CurrentTabs=[],EditorCamera=cam,ToAddTabsText=["helo","by","hi"],ToAddTabsFunc=[Func(print,"helo"),Func(print,"by"),Func(print,"hi")],PlayFunction=lambda:...,EditorDataDict={"Hell": 1,"Show tooltip": True},ShowInstructionFunc=lambda:...,ReadyToHostProjectFunc=lambda:...,HostProjectFunc=lambda:...)
+    # editor.AddTabsMenuButtons()
+    editor.SetUp()
+    sceneeditor = SceneEditor(EditorCamera=cam,enabled=False,WorldItems=[],ToImport=set(),EditorDataDict={"Hell": 1},AddTerminalFunc=Func(print,'hi'),SaveFunction=Func(print,'hi'),ShowInstructionFunc=Func(print,"e"),ParentProjectEditor=editor)
+    editor.UpdateTabsMenu()
+    editor.AfterSceneEditorSetUp()
+    editor.JumpTabs(0)
+    top,left = 0.001,0.001
     app.run()
-
