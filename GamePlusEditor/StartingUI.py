@@ -7,7 +7,6 @@ from GamePlusEditor.ProjectLoader import ProjectLoader
 from GamePlusEditor.CoreFiles.TrueFalseIndicator import TrueFalseIndicator
 from GamePlusEditor.CoreFiles.ConfigProjectMenu import ConfigProjectManager
 from GamePlusEditor.OpenFile import Openselector
-from GamePlusEditor.Netwroking.JoinProjectMenu import JoinProjectMenu
 
 class StartingUI(Entity):
     def __init__(self,EditorDataDictConfigable,EditorDataDictNonConfigable,RegiveDataDictFunc,RetakeDataDictFunc,OnProjectStart,ProjectName,SaveNonConfiableData,ShowInstructionFunc,ChangeConfigDataToDefaultTypeFunc,FuncToEnableOnOpen,ExportToPyFunc,RemoveProjectNameFunc,ProjectSettings={"ProjectGraphicsQuality": "Low","ProjectLanguage": "Python","ProjectNetworkingOnline": False,"CurrentTargatedPlatform": "windows","CurrentProjectBase": "FPC"},OpenedProjects = []):
@@ -29,9 +28,6 @@ class StartingUI(Entity):
         self.EditorDataDictNonConfigable = EditorDataDictNonConfigable
         self.ProjectDataName = ["ProjectGraphicsQuality","ProjectLanguage","ProjectNetworkingOnline","CurrentTargatedPlatform","CurrentProjectBase"]
         self.RecentProjectButtonTexts = ("Open project","Config project","Finish project","Delete project")
-        self.OtherOptionsText = ["Official site","View on github","Watch youtube tutorial","Load an exported project","View plugins","Join project"]
-        self.OtherOptionsFunc = [Func(print_on_screen,"Site not done yet!",position = (0,.1),color = color.blue,duration =2),Func(OpenBrowser,"https://github.com/IndividualCoder/UrsinaEditor"),Func(print_on_screen,"No tutorials yet (•_•)",position = (0,.1),color = color.blue,duration =2),Func(print_on_screen,"Even the logic is not built yet :/",position = (0,.1),color = color.blue,duration =2),Func(print_on_screen,"No plugins yet!",position = (0,.1),color = color.blue,duration =2),Func(JoinProjectMenu,self.EnableStaringUI,self.DisableStartingUI)]
-
 
         self.ChangeConfigDataToDefaultTypeFunc = ChangeConfigDataToDefaultTypeFunc
         self.OpenedProjects = OpenedProjects
@@ -51,8 +47,7 @@ class StartingUI(Entity):
 
         self.CreateNewProjectButton = Button(parent = self.StartingUIParentEntity,text="Create new project",radius=.2,Key="1", on_key_press = self.ShowCreateNewProject,on_click = self.ShowCreateNewProject,scale = (0.4,0.2),position = Vec3(-0.56713, 0.384259, 0))
         self.ChangeVarsButton = Button(parent = self.StartingUIParentEntity,text="Change vars",radius=.2,Key="2", on_key_press = self.ChangeVarsMenu,on_click = self.ChangeVarsMenu,scale = (0.4,0.2),position = Vec3(0.56713, 0.384259, 0))
-        self.OtherOptionsButton = Button(parent = self.StartingUIParentEntity,text="More options",radius=.2,Key="3",on_click = self.ShowOtherOptionsFunc,scale = (0.4,0.2),position = Vec3(-0.56713, 0.163194, 0))
-        self.QuitApplicationButton = Button(parent = self.StartingUIParentEntity,text="Close editor",radius=.2,Key=["escape",'4'], on_key_press = self.CheckUserQuit,on_click = self.CheckUserQuit,scale = (0.4,0.2),position = Vec3(0.56713, 0.163194, 0))
+        self.QuitApplicationButton = Button(parent = self.StartingUIParentEntity,text="Close editor",radius=.2,Key=["escape",'4'], on_key_press = self.CheckUserQuit,on_click = self.CheckUserQuit,scale = (0.4,0.2),position=Vec3(0, 0.35, 0))
 
         self.BackgroundOfRecentProjects = Entity(parent = self.RecentProjectsParentEntity,model = "cube",color = color.gray,scale = Vec3(1.77792, 0.535418, 0),position = Vec3(0, -0.232639, 0))
 
@@ -85,12 +80,6 @@ class StartingUI(Entity):
         self.TargatedPlatformBaseDict = {"windows": self.TargatedPlatformDropdownMenu,"android": self.TargatedPlatformDropdownMenu.buttons[0],"mac": self.TargatedPlatformDropdownMenu.buttons[1],"ios": self.TargatedPlatformDropdownMenu.buttons[2],"linux": self.TargatedPlatformDropdownMenu.buttons[3]}
         self.CurrentTargatedPlatform = self.TargatedPlatformBaseDict["windows"]
 
-        self.ProjectNetworkingText = Text(name = "Select project networking text",parent = self.CreateNewProjectMenuParentEntity,text="Networking",position = (-0.8, -0.1649999, 0),scale = 1)
-        self.ProjectNetworkingText.create_background(.03,0)
-        self.ProjectNetworkingMenuParentEntity = Entity(name = "Networking parent",parent = self.CreateNewProjectMenuParentEntity,model = "cube",color = color.dark_gray,scale = (.3,.2),enabled = False,position = (-0.664, -.31,60))
-        self.ProjectNetworkignOnlineButton = Button(parent = self.ProjectNetworkingMenuParentEntity,text = "Offline",color = color.blue,highlight_color = color.blue.tint(-.2),clicked_color = color.blue,scale = (1,.3),enabled = False,position = (0,-.214,-20),radius = 0,on_click = self.SetProjectNetworking)
-        self.ProjectNetworkignOfflineButton = Button(parent = self.ProjectNetworkingMenuParentEntity,text = "Online",color = color.light_gray.tint(-.2),highlight_color = color.light_gray,clicked_color = color.blue,scale = (1,.3),enabled = False,position = (0,.214,-20),radius = 0,on_click = self.SetProjectNetworking)
-
         self.ProjectGraphicsQualityText = Text(name = "Select project graphics quality text",parent = self.CreateNewProjectMenuParentEntity,text="Select graphics quality",position = (-0.49, -0.1, 0),scale = 1)
         self.ProjectGraphicsQualityText.create_background(.03,0)
         self.ProjectGraphicsQualityMenuParentEntity = Entity(name = "Graphics parent",parent = self.CreateNewProjectMenuParentEntity,model = "cube",color = color.dark_gray,scale = Vec3(0.3, 0.26, 1),enabled = False,position = (-0.354, -0.28, 60))
@@ -105,7 +94,6 @@ class StartingUI(Entity):
         self.DisableStartingUI()
         self.EnableCreateNewProjectMenuButtons()
         self.EnableLanguageButtons()
-        self.EnableNetworkingButtons()
         self.EnableGraphicsQualityButtons()
         invoke(self.ProjectTitleButton.MakeActive,delay = .1)
 
@@ -392,10 +380,6 @@ class StartingUI(Entity):
         for i in range(len(self.LanguageMenuParentEntity.children)):
             self.LanguageMenuParentEntity.children[i].enable()
 
-    def EnableNetworkingButtons(self):
-        for i in range(len(self.ProjectNetworkingMenuParentEntity.children)):
-            self.ProjectNetworkingMenuParentEntity.children[i].enable()
-
     def EnableGraphicsQualityButtons(self):
         for i in range(len(self.ProjectGraphicsQualityMenuParentEntity.children)):
             self.ProjectGraphicsQualityMenuParentEntity.children[i].enable()
@@ -416,9 +400,9 @@ class StartingUI(Entity):
         self.SetTooltip(DataDict["Show tooltip"])
 
     def SetTooltip(self,value):
-        self.ItemToToolTipList = [self.CreateNewProjectFpcButton,self.CreateNewProjectTpcButton,self.CreateNewProjectTopDownButton,self.CreateNewProjectPlatformerButton,self.CreateNewProjectFpcAndTpcButton,self.LanguagePythonButton,self.LanguageUrsaVisorButton,self.ProjectNetworkignOnlineButton,self.ProjectNetworkignOfflineButton,self.ProjectGraphicsQualityLowButton,self.ProjectGraphicsQualityMediumButton,self.ProjectGraphicsQualityHighButton,self.SaveChangedVarsButton]
+        self.ItemToToolTipList = [self.CreateNewProjectFpcButton,self.CreateNewProjectTpcButton,self.CreateNewProjectTopDownButton,self.CreateNewProjectPlatformerButton,self.CreateNewProjectFpcAndTpcButton,self.LanguagePythonButton,self.LanguageUrsaVisorButton,self.ProjectGraphicsQualityLowButton,self.ProjectGraphicsQualityMediumButton,self.ProjectGraphicsQualityHighButton,self.SaveChangedVarsButton]
         if value:
-            self.ToolTipList = ["First person games like valorant, cod etc","Third person games like pubg, gta etc","Camera is stuck at one place but not in 2d, this category is also called '2.5d games',like clash of clans, clash royale etc","2d game where camera is stuck at one place in 2d","Both TPC and FPC","If enabled,the little amount to code you will have to write will be in python","If enabled,the little amount to code you will have to write will be in ursa-visor, a gui coding language like blueprint but for GamePlus editor","Your game will be online","Your game will be offline","Graphics quality of your game will be low,you will be able to add lights but not too much and shadows will not be that 'real'","Graphics quality of your game will be medium, you will be able to add unlimited lights but lights will not be that 'real'","The best graphics quality be can provide","Will save the changed values in a file and apply them next time you open the editor"]
+            self.ToolTipList = ["First person games","Third person games","Camera is stuck at one place but not in 2d, this category is also called '2.5d games'","2d game where camera is stuck at one place in 2d","Both TPC and FPC","If enabled,the little amount to code you will have to write will be in python","If enabled,the little amount to code you will have to write will be in ursa-visor, a gui coding language like blueprint but for GamePlus editor","Your game will be online","Your game will be offline","Graphics quality of your game will be low,you will be able to add lights but not too much and shadows will not be that 'real'","Graphics quality of your game will be medium, you will be able to add unlimited lights but lights will not be that 'real'","The best graphics quality be can provide","Will save the changed values in a file and apply them next time you open the editor"]
             for i in range(len(self.ItemToToolTipList)):
                 self.ItemToToolTipList[i].tool_tip = Tooltip(self.ToolTipList[i],z = -30,render_queue = 3,always_on_top = True)
                 # self.ItemToToolTipList[i].tool_tip.background.z = -1
